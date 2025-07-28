@@ -1,0 +1,503 @@
+openapi: 3.0.0
+info:
+  title: Vault Feature API
+  description: API for managing projects, query runs, prompts, and results in the Vault feature.
+  version: 1.0.0
+
+servers:
+  - url: /vault
+    description: Server
+
+components:
+
+  schemas:
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workflow_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        query_run_count:
+          type: integer
+          description: Optional summary stat
+
+    ProjectList:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        total:
+          type: integer
+
+    CreateProjectRequest:
+      type: object
+      required: [name, workflow_type]
+      properties:
+        name:
+          type: string
+        workflow_type:
+          type: string
+          example: blank
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Optional new name
+
+    PromptRequest:
+      type: object
+      required: [project_id, prompt]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+          example: What are the dates of the documents?
+        query_type:
+          type: string
+          enum: [ask, review]
+          default: ask
+
+    PromptResponse:
+      type: object
+      properties:
+        suggested_questions:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              order_index:
+                type: integer
+
+    CreateQueryRequest:
+      type: object
+      required: [project_id, name, query_type, questions]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query_type:
+          type: string
+          enum: [ask, review]
+        included_docs:
+          type: string
+          enum: [all, partial]
+          default: all
+        document_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Required if included_docs is partial
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              order_index:
+                type: integer
+
+    QueryRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        started_at:
+          type: string
+          format: date-time
+
+    QueryList:
+      type: object
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRun'
+        total:
+          type: integer
+
+    Result:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        answer:
+          type: object  # JSONB, flexible
+          additionalProperties: true
+        status:
+          type: string
+          enum: [completed, failed]
+
+    ResultList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Result'
+        total:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    VaultOverviewProject:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workflow_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        file_count:
+          type: integer
+          description: Number of documents/files in the project
+        running_queries_count:
+          type: integer
+          description: Number of query runs currently in 'running' status
+
+    VaultOverview:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/VaultOverviewProject'
+        total_projects:
+          type: integer
+        total_running_queries:
+          type: integer
+          description: Aggregate across all projects
+
+paths:
+  /:
+    get:
+      summary: Get vault main overview - list all projects with highlights (file count, running queries)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+            example: created_at:desc
+        - name: filter
+          in: query
+          schema:
+            type: string
+            example: workflow_type=tax-returns
+      responses:
+        '200':
+          description: Vault overview with project highlights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultOverview'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects:
+    get:
+      summary: Get an overview of all projects for the user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+            example: created_at:desc
+        - name: filter
+          in: query
+          schema:
+            type: string
+            example: workflow_type=tax-returns
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{projectId}:
+    get:
+      summary: Get details for a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: include
+          in: query
+          schema:
+            type: string
+            example: queries
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update (edit) details of an existing project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /prompts:
+    post:
+      summary: Generate suggested questions from a user prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptRequest'
+      responses:
+        '200':
+          description: Suggested questions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /queries:
+    post:
+      summary: Start a new query run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQueryRequest'
+      responses:
+        '202':
+          description: Query run accepted and started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: Get list of query runs and their status
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            example: running
+      responses:
+        '200':
+          description: List of queries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /queries/{queryId}/results:
+    get:
+      summary: Get results for a specific query run
+      parameters:
+        - name: queryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: document_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultList'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

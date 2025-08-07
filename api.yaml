@@ -3,13 +3,10 @@ info:
   title: Vault Feature API
   description: API for managing projects, query runs, prompts, and results in the Vault feature.
   version: 1.0.0
-
 servers:
   - url: /vault
     description: Server
-
 components:
-
   schemas:
     Project:
       type: object
@@ -27,7 +24,6 @@ components:
         query_run_count:
           type: integer
           description: Optional summary stat
-
     ProjectList:
       type: object
       properties:
@@ -37,27 +33,28 @@ components:
             $ref: '#/components/schemas/Project'
         total:
           type: integer
-
     CreateProjectRequest:
       type: object
-      required: [name, workflow_type]
+      required:
+        - name
+        - workflow_type
       properties:
         name:
           type: string
         workflow_type:
           type: string
           example: blank
-
     UpdateProjectRequest:
       type: object
       properties:
         name:
           type: string
           description: Optional new name
-
     PromptRequest:
       type: object
-      required: [project_id, prompt]
+      required:
+        - project_id
+        - prompt
       properties:
         project_id:
           type: string
@@ -67,9 +64,7 @@ components:
           example: What are the dates of the documents?
         query_type:
           type: string
-          enum: [ask, review]
-          default: ask
-
+          example: review
     PromptResponse:
       type: object
       properties:
@@ -82,39 +77,78 @@ components:
                 type: string
               order_index:
                 type: integer
-
     CreateQueryRequest:
-      type: object
-      required: [project_id, name, query_type, questions]
-      properties:
-        project_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        query_type:
-          type: string
-          enum: [ask, review]
-        included_docs:
-          type: string
-          enum: [all, partial]
-          default: all
-        document_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-          description: Required if included_docs is partial
-        questions:
-          type: array
-          items:
-            type: object
-            properties:
-              text:
+      oneOf:
+        - title: QueryForAllDocuments
+          type: object
+          description: Defines a query to run against all documents in the project.
+          required:
+            - project_id
+            - name
+            - query_type
+            - included_docs
+            - questions
+          properties:
+            project_id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            query_type:
+              type: string
+              enum: [ask, review]
+            included_docs:
+              type: string
+              description: Must be 'all' for this query type.
+              enum: [all]
+            questions:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  order_index:
+                    type: integer
+        - title: QueryForPartialDocuments
+          type: object
+          description: Defines a query to run against a specific subset of documents.
+          required:
+            - project_id
+            - name
+            - query_type
+            - included_docs
+            - document_ids
+            - questions
+          properties:
+            project_id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            query_type:
+              type: string
+              enum: [ask, review]
+            included_docs:
+              type: string
+              description: Must be 'partial' for this query type.
+              enum: [partial]
+            document_ids:
+              type: array
+              description: A required list of document UUIDs for a partial query.
+              minItems: 1
+              items:
                 type: string
-              order_index:
-                type: integer
-
+                format: uuid
+            questions:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  order_index:
+                    type: integer
     QueryRun:
       type: object
       properties:
@@ -128,11 +162,18 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, running, completed, failed, cancelled]
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
         started_at:
           type: string
           format: date-time
-
+        completed_at:
+          type: string
+          format: date-time
     QueryList:
       type: object
       properties:
@@ -142,7 +183,6 @@ components:
             $ref: '#/components/schemas/QueryRun'
         total:
           type: integer
-
     Result:
       type: object
       properties:
@@ -156,12 +196,13 @@ components:
           type: string
           format: uuid
         answer:
-          type: object  # JSONB, flexible
+          type: object
           additionalProperties: true
         status:
           type: string
-          enum: [completed, failed]
-
+          enum:
+            - completed
+            - failed
     ResultList:
       type: object
       properties:
@@ -171,13 +212,11 @@ components:
             $ref: '#/components/schemas/Result'
         total:
           type: integer
-
     Error:
       type: object
       properties:
         error:
           type: string
-
     VaultOverviewProject:
       type: object
       properties:
@@ -197,7 +236,6 @@ components:
         running_queries_count:
           type: integer
           description: Number of query runs currently in 'running' status
-
     VaultOverview:
       type: object
       properties:
@@ -210,11 +248,41 @@ components:
         total_running_queries:
           type: integer
           description: Aggregate across all projects
-
+    ProjectDocument:
+      type: object
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        added_at:
+          type: string
+          format: date-time
+    ProjectDocumentList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectDocument'
+        total:
+          type: integer
+    AddDocumentsRequest:
+      type: object
+      required:
+        - document_ids
+      properties:
+        document_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: A list of document UUIDs to associate with the project.
 paths:
-  /:
+  /projects:
     get:
-      summary: Get vault main overview - list all projects with highlights (file count, running queries)
+      summary: Get vault main overview - list all projects with highlights
       parameters:
         - name: page
           in: query
@@ -230,12 +298,7 @@ paths:
           in: query
           schema:
             type: string
-            example: created_at:desc
-        - name: filter
-          in: query
-          schema:
-            type: string
-            example: workflow_type=tax-returns
+            example: 'created_at:desc'
       responses:
         '200':
           description: Vault overview with project highlights
@@ -243,44 +306,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VaultOverview'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /projects:
-    get:
-      summary: Get an overview of all projects for the user
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 20
-        - name: sort
-          in: query
-          schema:
-            type: string
-            example: created_at:desc
-        - name: filter
-          in: query
-          schema:
-            type: string
-            example: workflow_type=tax-returns
-      responses:
-        '200':
-          description: List of projects
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProjectList'
         '401':
           description: Unauthorized
           content:
@@ -308,7 +333,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /projects/{projectId}:
     get:
       summary: Get details for a specific project
@@ -319,11 +343,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: include
-          in: query
-          schema:
-            type: string
-            example: queries
       responses:
         '200':
           description: Project details
@@ -371,7 +390,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
+    delete:
+      summary: Delete a project
+      description: Permanently deletes a project and all of its associated query runs and results.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project deleted successfully
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /projects/{projectId}/documents:
+    get:
+      summary: List documents in a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: A list of documents associated with the project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDocumentList'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /projects/{projectId}/documents/{documentId}:
+    delete:
+      summary: Remove a document from a project
+      description: Disassociates a document from a project. This does not delete the document from the source system.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Document removed from project successfully
+        '404':
+          description: Project or document association not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /prompts:
     post:
       summary: Generate suggested questions from a user prompt
@@ -394,8 +490,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /queries:
+    get:
+      summary: Get list of query runs and their status
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of queries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       summary: Start a new query run
       requestBody:
@@ -425,41 +550,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /queries/{queryId}:
     get:
-      summary: Get list of query runs and their status
+      summary: Get details for a specific query run
       parameters:
-        - name: project_id
-          in: query
+        - name: queryId
+          in: path
+          required: true
           schema:
             type: string
             format: uuid
-        - name: page
-          in: query
-          schema:
-            type: integer
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: status
-          in: query
-          schema:
-            type: string
-            example: running
       responses:
         '200':
-          description: List of queries
+          description: Query run details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QueryList'
-        '401':
-          description: Unauthorized
+                $ref: '#/components/schemas/QueryRun'
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
+    delete:
+      summary: Delete a query run
+      description: Deletes a query run and all of its associated results.
+      parameters:
+        - name: queryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Query run deleted successfully
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /queries/{queryId}/cancel:
+    post:
+      summary: Cancel a running query
+      parameters:
+        - name: queryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Query cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryRun'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - query is not in a running state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /queries/{queryId}/results:
     get:
       summary: Get results for a specific query run
@@ -478,16 +639,6 @@ paths:
           in: query
           schema:
             type: integer
-        - name: document_id
-          in: query
-          schema:
-            type: string
-            format: uuid
-        - name: question_id
-          in: query
-          schema:
-            type: string
-            format: uuid
       responses:
         '200':
           description: List of results
